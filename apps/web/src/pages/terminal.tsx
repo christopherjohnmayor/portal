@@ -1,194 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef, useEffect, useState } from "react";
+import { useTerminal } from "@/contexts/terminal-context";
 import AppLayout from "@/layouts/app-layout";
 import "@xterm/xterm/css/xterm.css";
 
 type TerminalStatus = "connecting" | "connected" | "disconnected" | "error";
 
 export default function TerminalPage() {
-  const terminalRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<TerminalStatus>("connecting");
-  const [errorMessage, setErrorMessage] = useState<string>("");
-  const [logs, setLogs] = useState<string[]>(["Page loaded"]);
-  const [isReady, setIsReady] = useState(false);
-  const initialized = useRef(false);
+  const { socket, isConnected, history, connect, logs: contextLogs, addLog } = useTerminal();
+  const [logs, setLogs] = useState<string[]>([]);
 
-  const addLog = useCallback((message: string) => {
-    const timestamp = new Date().toISOString().split("T")[1].split(".")[0];
-    const logMessage = `[${timestamp}] ${message}`;
-    console.log("[Terminal]", message);
-    setLogs((prev) => [...prev.slice(-50), logMessage]);
-  }, []);
-
-  // Set ready when component mounts
+  // Sync context logs to local logs for display
   useEffect(() => {
-    setIsReady(true);
-  }, []);
+    setLogs(contextLogs);
+  }, [contextLogs]);
 
+  // Connect on mount
   useEffect(() => {
-    if (!isReady) {
-      return;
-    }
-
-    addLog("useEffect triggered, isReady: true");
-
-    if (typeof window === "undefined") {
-      addLog("SSR detected, skipping");
-      return;
-    }
-
-    if (!terminalRef.current) {
-      addLog("terminalRef still not ready, waiting...");
-      return;
-    }
-
-    if (initialized.current) {
-      addLog("Already initialized");
-      return;
-    }
-
-    initialized.current = true;
-    addLog("Starting initialization...");
-
-    let mounted = true;
-    let socket: ReturnType<typeof import("socket.io-client").io> | null = null;
-    let terminal: import("@xterm/xterm").Terminal | null = null;
-
-    const initTerminal = async () => {
-      try {
-        addLog("Importing xterm...");
-        const { Terminal } = await import("@xterm/xterm");
-
-        addLog("Importing fit addon...");
-        const { FitAddon } = await import("@xterm/addon-fit");
-
-        addLog("Importing socket.io-client...");
-        const { io } = await import("socket.io-client");
-
-        if (!mounted || !terminalRef.current) {
-          addLog("Component unmounted");
-          return;
-        }
-
-        addLog("Creating terminal...");
-        terminal = new Terminal({
-          cursorBlink: true,
-          fontSize: 14,
-          fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-          theme: {
-            background: "#0a0a0a",
-            foreground: "#d4d4d4",
-            cursor: "#d4d4d4",
-          },
-        });
-
-        const fitAddon = new FitAddon();
-        terminal.loadAddon(fitAddon);
-        terminal.open(terminalRef.current);
-        fitAddon.fit();
-        addLog("Terminal opened");
-
-        terminal.writeln("Connecting to container terminal...");
-
-        // Initialize Socket.IO endpoint
-        addLog("Fetching /api/terminal/ws...");
-        const initRes = await fetch("/api/terminal/ws");
-        addLog(`Fetch response: ${initRes.status}`);
-
-        // Connect to Socket.IO
-        addLog("Creating socket connection...");
-        socket = io(window.location.origin, {
-          path: "/api/terminal/ws",
-          transports: ["polling", "websocket"],
-          timeout: 10000,
-          forceNew: true,
-        });
-
-        addLog("Socket created, setting up listeners...");
-
-        socket.on("connect", () => {
-          addLog(`Connected! ID: ${socket?.id}`);
-          terminal?.writeln(`Socket connected (${socket?.id})`);
-        });
-
-        socket.on("connected", (data: { containerId: string }) => {
-          addLog(`Container connected: ${data.containerId}`);
-          setStatus("connected");
-          terminal?.writeln(`Container: ${data.containerId}`);
-          terminal?.writeln("");
-          terminal?.focus();
-        });
-
-        socket.on("output", (data: string) => {
-          terminal?.write(data);
-        });
-
-        socket.on("log", (msg: string) => addLog(`Server: ${msg}`));
-
-        socket.on("error", (data: { message: string }) => {
-          addLog(`Error: ${data.message}`);
-          setStatus("error");
-          setErrorMessage(data.message);
-          terminal?.writeln(`\r\n\x1b[31mError: ${data.message}\x1b[0m`);
-        });
-
-        socket.on("disconnected", () => {
-          addLog("Docker disconnected");
-          setStatus("disconnected");
-        });
-
-        socket.on("disconnect", (reason) => {
-          addLog(`Socket disconnected: ${reason}`);
-          setStatus("disconnected");
-        });
-
-        socket.on("connect_error", (err) => {
-          addLog(`Connect error: ${err.message}`);
-          setStatus("error");
-          setErrorMessage(err.message);
-        });
-
-        terminal.onData((data) => {
-          if (socket?.connected) {
-            socket.emit("input", data);
-          }
-        });
-
-        // Check state after delay
-        setTimeout(() => {
-          addLog(
-            `Socket connected: ${socket?.connected}, id: ${socket?.id || "none"}`,
-          );
-        }, 3000);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        addLog(`Error: ${msg}`);
-        console.error(err);
-        setStatus("error");
-        setErrorMessage(msg);
-      }
-    };
-
-    initTerminal();
-
-    return () => {
-      mounted = false;
-      socket?.disconnect();
-      terminal?.dispose();
-    };
-  }, [addLog, isReady]);
+    connect();
+  }, [connect]);
 
   return (
-    <AppLayout>
-      <div className="flex h-full flex-col">
+    <AppLayout disableScroll>
+      <div className="flex h-full flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-border px-4 py-2">
           <div className="flex items-center gap-2">
             <h1 className="text-lg font-semibold">Terminal</h1>
-            <StatusIndicator status={status} />
+            <StatusIndicator status={isConnected ? "connected" : "connecting"} />
           </div>
-          {(status === "error" || status === "disconnected") && (
+          {(!isConnected) && (
             <button
               type="button"
-              onClick={() => window.location.reload()}
+              onClick={() => connect()}
               className="rounded bg-primary px-3 py-1 text-sm text-primary-fg hover:bg-primary/90"
             >
               Reconnect
@@ -196,20 +38,17 @@ export default function TerminalPage() {
           )}
         </div>
 
-        {status === "error" && errorMessage && (
-          <div className="bg-danger/10 px-4 py-2 text-danger text-sm">
-            {errorMessage}
-          </div>
-        )}
-
-        <div
-          ref={terminalRef}
-          className="flex-1 bg-[#0a0a0a] p-2"
-          style={{ minHeight: "300px" }}
-        />
+        <div className="flex-1 bg-[#0a0a0a] min-h-0 relative">
+          <TerminalInstance
+            socket={socket}
+            history={history}
+            onInput={(data) => socket?.emit("input", data)}
+            addLog={addLog}
+          />
+        </div>
 
         {/* Debug logs panel */}
-        <div className="border-t border-border bg-muted/30 max-h-48 overflow-auto">
+        <div className="border-t border-border bg-muted/30 max-h-48 overflow-auto flex-none">
           <div className="px-4 py-2 text-xs font-semibold text-muted-fg border-b border-border flex justify-between items-center">
             <span>Debug Logs ({logs.length})</span>
             <button
@@ -233,25 +72,173 @@ export default function TerminalPage() {
   );
 }
 
-function StatusIndicator({ status }: { status: TerminalStatus }) {
-  const colors = {
+// Separate component for XTerm to handle lifecycle cleanly
+function TerminalInstance({
+  socket,
+  history,
+  onInput,
+  addLog
+}: {
+  socket: any,
+  history: string,
+  onInput: (d: string) => void,
+  addLog: (m: string) => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const xtermRef = useRef<import("@xterm/xterm").Terminal | null>(null);
+  const fitAddonRef = useRef<any>(null);
+  // Use a ref to access socket inside resize handler without making it a dependency
+  const socketRef = useRef<any>(null);
+  // Use state to track when xterm is ready - this triggers effect re-runs
+  const [isXtermReady, setIsXtermReady] = useState(false);
+
+  // Keep socketRef in sync
+  useEffect(() => {
+    socketRef.current = socket;
+  }, [socket]);
+
+  // Helper to emit resize to backend
+  const emitResize = (cols: number, rows: number) => {
+    if (socketRef.current && cols > 0 && rows > 0) {
+      console.log(`[Terminal] Emitting resize: ${cols}x${rows}`);
+      socketRef.current.emit("resize", { cols, rows });
+    }
+  };
+
+  // Initialize Xterm
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    // Use AbortController pattern for proper cleanup handling
+    let aborted = false;
+
+    const init = async () => {
+      const { Terminal } = await import("@xterm/xterm");
+      const { FitAddon } = await import("@xterm/addon-fit");
+      const { WebLinksAddon } = await import("@xterm/addon-web-links");
+
+      // Check if we were aborted during async import
+      if (aborted) return;
+
+      const term = new Terminal({
+        cursorBlink: true,
+        fontSize: 14,
+        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        theme: {
+          background: "#0a0a0a",
+          foreground: "#d4d4d4",
+          cursor: "#d4d4d4",
+        },
+      });
+
+      const fit = new FitAddon();
+      const webLinks = new WebLinksAddon();
+
+      term.loadAddon(fit);
+      term.loadAddon(webLinks);
+      term.open(containerRef.current!);
+
+      // Listen for terminal resize events and emit to backend
+      term.onResize(({ cols, rows }) => {
+        emitResize(cols, rows);
+      });
+
+      // Initial fit
+      try {
+        fit.fit();
+      } catch (e) {
+        console.warn("Initial fit failed", e);
+      }
+
+      term.onData(onInput);
+
+      xtermRef.current = term;
+      fitAddonRef.current = fit;
+      setIsXtermReady(true);
+
+      // Robust resize handling
+      const resizeObserver = new ResizeObserver(() => {
+        // Debounce slightly to avoid thrashing
+        requestAnimationFrame(() => {
+          try {
+            fit.fit();
+            // After fitting, emit the new size
+            if (xtermRef.current) {
+              emitResize(xtermRef.current.cols, xtermRef.current.rows);
+            }
+          } catch (e) {
+            // ignore
+          }
+        });
+      });
+      resizeObserver.observe(containerRef.current!);
+
+      // Force a re-fit after a short delay to ensure layout and fonts are settled
+      setTimeout(() => {
+        try {
+          fit.fit();
+          // Emit resize after delayed fit
+          if (xtermRef.current) {
+            emitResize(xtermRef.current.cols, xtermRef.current.rows);
+          }
+        } catch (e) { }
+      }, 100);
+
+      // Restore Initial History
+      if (history) {
+        term.write(history);
+      }
+
+      // Store observer for cleanup
+      (term as any)._resizeObserver = resizeObserver;
+    };
+    init();
+
+    return () => {
+      aborted = true;
+      setIsXtermReady(false);
+      if (xtermRef.current) {
+        (xtermRef.current as any)._resizeObserver?.disconnect();
+        xtermRef.current.dispose();
+        xtermRef.current = null;
+      }
+    };
+  }, []); // Run once per mount
+
+  // Handle Socket Output - re-runs when xterm becomes ready or socket changes
+  useEffect(() => {
+    if (!socket || !isXtermReady || !xtermRef.current) return;
+
+    const handleOutput = (data: string) => {
+      xtermRef.current?.write(data);
+    };
+
+    socket.on("output", handleOutput);
+
+    // When socket connects and xterm is ready, emit current size
+    if (xtermRef.current) {
+      emitResize(xtermRef.current.cols, xtermRef.current.rows);
+    }
+
+    return () => {
+      socket.off("output", handleOutput);
+    };
+  }, [socket, isXtermReady]); // Use state instead of ref for proper reactivity
+
+  return <div ref={containerRef} className="h-full w-full" />;
+}
+
+function StatusIndicator({ status }: { status: string }) {
+  const colors: Record<string, string> = {
     connecting: "bg-yellow-500",
     connected: "bg-green-500",
     disconnected: "bg-gray-500",
     error: "bg-red-500",
   };
-
-  const texts = {
-    connecting: "Connecting...",
-    connected: "Connected",
-    disconnected: "Disconnected",
-    error: "Error",
-  };
-
   return (
     <div className="flex items-center gap-1.5 text-sm text-muted-fg">
-      <span className={`size-2 rounded-full ${colors[status]}`} />
-      <span>{texts[status]}</span>
+      <span className={`size-2 rounded-full ${colors[status] || "bg-gray-500"}`} />
+      <span className="capitalize">{status}</span>
     </div>
   );
 }

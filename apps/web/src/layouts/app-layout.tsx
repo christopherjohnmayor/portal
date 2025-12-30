@@ -14,15 +14,26 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default function AppLayout({
+  children,
+  disableScroll = false,
+}: {
+  children: React.ReactNode;
+  disableScroll?: boolean;
+}) {
   return (
     <SidebarProvider
       className={`${geistSans.className} ${geistMono.variable} h-dvh overflow-hidden`}
     >
       <AppSidebar intent="inset" collapsible="dock" />
-      <SidebarInset className="overflow-hidden">
+      <SidebarInset className="overflow-hidden min-h-0">
         <AppSidebarNav />
-        <div className="flex-1 overflow-auto">{children}</div>
+        <div
+          className={`flex-1 min-h-0 ${disableScroll ? "overflow-hidden" : "overflow-auto"
+            }`}
+        >
+          {children}
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );

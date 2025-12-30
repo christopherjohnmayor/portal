@@ -1,0 +1,177 @@
+version: "3.8"
+
+services:
+  # Portal web UI
+  portal:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+    container_name: opencode-portal
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_OPENCODE_SERVER_URL=http://opencode-default:4000
+      - NEXT_PUBLIC_OPENCODE_SERVER_1_NAME=Default
+      - NEXT_PUBLIC_OPENCODE_SERVER_1_URL=http://opencode-default:4000
+      - NEXT_PUBLIC_OPENCODE_SERVER_1_COLOR=#64748b
+      - NEXT_PUBLIC_OPENCODE_SERVER_2_NAME=Project Alpha
+      - NEXT_PUBLIC_OPENCODE_SERVER_2_URL=http://opencode-1:4000
+      - NEXT_PUBLIC_OPENCODE_SERVER_2_COLOR=#ef4444
+      - NEXT_PUBLIC_OPENCODE_SERVER_3_NAME=Project Beta
+      - NEXT_PUBLIC_OPENCODE_SERVER_3_URL=http://opencode-2:4000
+      - NEXT_PUBLIC_OPENCODE_SERVER_3_COLOR=#3b82f6
+      - NEXT_PUBLIC_OPENCODE_SERVER_4_NAME=Project Gamma
+      - NEXT_PUBLIC_OPENCODE_SERVER_4_URL=http://opencode-3:4000
+      - NEXT_PUBLIC_OPENCODE_SERVER_4_COLOR=#10b981
+    volumes:
+      - ./apps/web:/app
+      - portal-node-modules:/app/node_modules
+    command: ["/bin/sh", "-c", "bun run dev"]
+    depends_on:
+      - opencode-default
+      - opencode-1
+      - opencode-2
+      - opencode-3
+    restart: unless-stopped
+    networks:
+      - opencode-network
+
+  # OpenCode Default Server (Default Instance)
+  opencode-default:
+    image: ghcr.io/sst/opencode:latest
+    container_name: opencode-default
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./project-default:/workspace
+      - ~/.gitconfig:/root/.gitconfig:ro
+      - ~/.ssh:/root/.ssh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./opencode/instance-default:/root/.config/opencode
+    working_dir: /workspace
+    environment:
+      - LD_PRELOAD=/lib/libgcompat.so.0
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        apk add --no-cache gcompat
+        echo '#!/bin/sh' > /usr/local/bin/xdg-open
+        echo 'echo "🔗 [Browser] Opening URL: $$1"' >> /usr/local/bin/xdg-open
+        chmod +x /usr/local/bin/xdg-open
+        exec opencode serve --port 4000 --hostname 0.0.0.0
+    networks:
+      - opencode-network
+
+  # OpenCode Server 1 - Project Alpha
+  opencode-1:
+    image: ghcr.io/sst/opencode:latest
+    container_name: opencode-server-1
+    restart: unless-stopped
+    ports:
+      - "4001:4000"
+    volumes:
+      - ./project-alpha:/workspace
+      - ~/.gitconfig:/root/.gitconfig:ro
+      - ~/.ssh:/root/.ssh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./opencode/instance-1:/root/.config/opencode
+    working_dir: /workspace
+    environment:
+      - LD_PRELOAD=/lib/libgcompat.so.0
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        apk add --no-cache gcompat
+        echo '#!/bin/sh' > /usr/local/bin/xdg-open
+        echo 'echo "🔗 [Browser] Opening URL: $$1"' >> /usr/local/bin/xdg-open
+        chmod +x /usr/local/bin/xdg-open
+        exec opencode serve --port 4000 --hostname 0.0.0.0
+    networks:
+      - opencode-network
+
+  # OpenCode Server 2 - Project Beta
+  opencode-2:
+    image: ghcr.io/sst/opencode:latest
+    container_name: opencode-server-2
+    restart: unless-stopped
+    ports:
+      - "4002:4000"
+    volumes:
+      - ./project-beta:/workspace
+      - ~/.gitconfig:/root/.gitconfig:ro
+      - ~/.ssh:/root/.ssh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./opencode/instance-2:/root/.config/opencode
+    working_dir: /workspace
+    environment:
+      - LD_PRELOAD=/lib/libgcompat.so.0
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        apk add --no-cache gcompat
+        echo '#!/bin/sh' > /usr/local/bin/xdg-open
+        echo 'echo "🔗 [Browser] Opening URL: $$1"' >> /usr/local/bin/xdg-open
+        chmod +x /usr/local/bin/xdg-open
+        exec opencode serve --port 4000 --hostname 0.0.0.0
+    networks:
+      - opencode-network
+
+  # OpenCode Server 3 - Project Gamma
+  opencode-3:
+    image: ghcr.io/sst/opencode:latest
+    container_name: opencode-server-3
+    restart: unless-stopped
+    ports:
+      - "4003:4000"
+    volumes:
+      - ./project-gamma:/workspace
+      - ~/.gitconfig:/root/.gitconfig:ro
+      - ~/.ssh:/root/.ssh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./opencode/instance-3:/root/.config/opencode
+    working_dir: /workspace
+    environment:
+      - LD_PRELOAD=/lib/libgcompat.so.0
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        apk add --no-cache gcompat
+        echo '#!/bin/sh' > /usr/local/bin/xdg-open
+        echo 'echo "🔗 [Browser] Opening URL: $$1"' >> /usr/local/bin/xdg-open
+        chmod +x /usr/local/bin/xdg-open
+        exec opencode serve --port 4000 --hostname 0.0.0.0
+    networks:
+      - opencode-network
+
+networks:
+  opencode-network:
+    driver: bridge
+
+volumes:
+  portal-node-modules:
+    name: portal-node-modules
+
+  # Persist OpenCode configurations separately for each instance
+  opencode-instance-default:
+    name: opencode-instance-default
+  opencode-instance-1:
+    name: opencode-instance-1
+  opencode-instance-2:
+    name: opencode-instance-2
+  opencode-instance-3:
+    name: opencode-instance-3
+
+  # Project workspace volumes
+  project-default:
+    name: project-default
+  project-alpha:
+    name: project-alpha
+  project-beta:
+    name: project-beta
+  project-gamma:
+    name: project-gamma

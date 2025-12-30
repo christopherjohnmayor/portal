@@ -10,6 +10,7 @@ import {
   LifebuoyIcon,
   ShieldCheckIcon,
   TrashIcon,
+  FolderIcon,
 } from "@heroicons/react/24/solid";
 import { useRouter } from "next/router";
 import { useState } from "react";
@@ -17,6 +18,7 @@ import useSWR from "swr";
 import IconBox from "@/components/icons/box-icon";
 import { IconGridPlus } from "@/components/icons/grid-plus-icon";
 import { mutateSessions, useSessions } from "@/hooks/use-sessions";
+import { useServers } from "@/hooks/use-servers";
 import { Avatar } from "@/components/ui/avatar";
 import { Link } from "@/components/ui/link";
 import {
@@ -41,6 +43,7 @@ import {
   SidebarSection,
   SidebarSectionGroup,
 } from "@/components/ui/sidebar";
+import { AuthStatus } from "@/components/auth-status";
 
 interface Project {
   id: string;
@@ -54,8 +57,25 @@ interface Project {
   };
 }
 
-const projectFetcher = async (url: string) => {
-  const response = await fetch(url);
+const projectFetcher = async (
+  arg1: string | [string, string | undefined],
+  arg2?: string,
+) => {
+  let url: string;
+  let serverUrl: string | undefined;
+
+  if (Array.isArray(arg1)) {
+    [url, serverUrl] = arg1;
+  } else {
+    url = arg1;
+    serverUrl = arg2;
+  }
+
+  const headers: HeadersInit = {};
+  if (serverUrl) {
+    headers["X-Active-Server-Url"] = serverUrl;
+  }
+  const response = await fetch(url, { headers });
   if (!response.ok) {
     throw new Error("Failed to fetch");
   }
@@ -69,8 +89,9 @@ function getProjectName(worktree: string): string {
 }
 
 function CurrentProject() {
+  const { activeServer } = useServers();
   const { data: currentProject } = useSWR<Project>(
-    "/api/project/current",
+    ["/api/project/current", activeServer?.url],
     projectFetcher,
   );
 
@@ -97,22 +118,32 @@ export default function AppSidebar(
 ) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
+  const { activeServer } = useServers();
 
+  // Use useSessions to only show sessions for the active server
   const { sessions, error, isLoading } = useSessions();
 
   async function handleNewSession() {
+    if (creating) return;
     setCreating(true);
+    console.log("[AppSidebar] Creating session on:", activeServer?.url);
     try {
-      const response = await fetch("/api/sessions", { method: "POST" });
+      const response = await fetch("/api/sessions", {
+        method: "POST",
+        headers: {
+          ...(activeServer?.url
+            ? { "X-Active-Server-Url": activeServer.url }
+            : {}),
+        },
+      });
+      console.log("[AppSidebar] Create response:", response.status);
       if (!response.ok) {
         throw new Error("Failed to create session");
       }
       const data = await response.json();
       const newSession = data.data || data;
 
-      // Refresh the sessions list
       mutateSessions();
-
       router.push(`/session/${newSession.id}`);
     } catch (err) {
       console.error("Failed to create session:", err);
@@ -125,15 +156,18 @@ export default function AppSidebar(
     try {
       const response = await fetch(`/api/sessions/${sessionId}`, {
         method: "DELETE",
+        headers: {
+          ...(activeServer?.url
+            ? { "X-Active-Server-Url": activeServer.url }
+            : {}),
+        },
       });
       if (!response.ok) {
         throw new Error("Failed to delete session");
       }
 
-      // Refresh the sessions list
       mutateSessions();
 
-      // If we're on the deleted session's page, navigate away
       if (router.query.id === sessionId) {
         router.push("/");
       }
@@ -173,6 +207,19 @@ export default function AppSidebar(
               <SidebarLink href="/terminal" className="gap-x-2">
                 <CommandLineIcon className="size-4 shrink-0" />
                 <SidebarLabel>Terminal</SidebarLabel>
+              </SidebarLink>
+            </SidebarItem>
+
+            <SidebarItem tooltip="Files">
+              <SidebarLink href="/files" className="gap-x-2">
+                <FolderIcon className="size-4 shrink-0" />
+                <SidebarLabel>Files</SidebarLabel>
+              </SidebarLink>
+            </SidebarItem>
+            <SidebarItem tooltip="Agent Skills">
+              <SidebarLink href="/skills" className="gap-x-2">
+                <CommandLineIcon className="size-4 shrink-0" />
+                <SidebarLabel>Skills</SidebarLabel>
               </SidebarLink>
             </SidebarItem>
           </SidebarSection>
@@ -248,10 +295,12 @@ export default function AppSidebar(
         </SidebarSectionGroup>
       </SidebarContent>
 
-      <SidebarFooter className="flex flex-row justify-between gap-4 group-data-[state=collapsed]:flex-col">
+      <SidebarFooter className="flex flex-col gap-2">
+        <AuthStatus />
         <Menu>
           <MenuTrigger
-            className="flex w-full items-center justify-between"
+            intent="plain"
+            className="flex w-full items-center justify-between text-left"
             aria-label="Profile"
           >
             <div className="flex items-center gap-x-2">

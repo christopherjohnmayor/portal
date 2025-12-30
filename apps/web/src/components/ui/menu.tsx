@@ -1,15 +1,14 @@
 "use client";
 
+// Force update: 2025-12-23 - Fixing duplicate Button import
 import { CheckIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
 import type {
-  ButtonProps,
   MenuItemProps as MenuItemPrimitiveProps,
   MenuProps as MenuPrimitiveProps,
   MenuSectionProps as MenuSectionPrimitiveProps,
   MenuTriggerProps as MenuTriggerPrimitiveProps,
 } from "react-aria-components";
 import {
-  Button,
   Collection,
   composeRenderProps,
   Header,
@@ -21,7 +20,7 @@ import {
 } from "react-aria-components";
 import { twJoin, twMerge } from "tailwind-merge";
 import { tv, type VariantProps } from "tailwind-variants";
-import { cx } from "@/lib/primitive";
+import { cx, filterUndefinedProps } from "@/lib/primitive";
 import {
   DropdownDescription,
   DropdownKeyboard,
@@ -31,6 +30,7 @@ import {
   dropdownSectionStyles,
 } from "./dropdown";
 import { PopoverContent, type PopoverContentProps } from "./popover";
+import { Button, type ButtonProps } from "./button";
 
 const Menu = (props: MenuTriggerPrimitiveProps) => (
   <MenuTriggerPrimitive {...props} />
@@ -42,6 +42,7 @@ const MenuSubMenu = ({ delay = 0, ...props }) => (
   </SubmenuTriggerPrimitive>
 );
 
+// Update MenuTriggerProps to extend our custom ButtonProps
 interface MenuTriggerProps extends ButtonProps {
   ref?: React.Ref<HTMLButtonElement>;
 }
@@ -50,18 +51,13 @@ const MenuTrigger = ({ className, ref, ...props }: MenuTriggerProps) => (
   <Button
     ref={ref}
     data-slot="menu-trigger"
-    className={cx(
-      "relative inline text-left outline-hidden focus-visible:ring-1 focus-visible:ring-primary",
-      "*:data-[slot=chevron]:size-5 sm:*:data-[slot=chevron]:size-4",
-      className,
-    )}
-    {...props}
+    className={cx("relative inline-flex", className)}
+    {...filterUndefinedProps(props)}
   />
 );
 
 interface MenuContentProps<T>
-  extends MenuPrimitiveProps<T>,
-    Pick<PopoverContentProps, "placement"> {
+  extends MenuPrimitiveProps<T>, Pick<PopoverContentProps, "placement"> {
   className?: string;
   popover?: Pick<
     PopoverContentProps,
@@ -104,8 +100,9 @@ const MenuContent = <T extends object>({
 };
 
 interface MenuItemProps
-  extends MenuItemPrimitiveProps,
-    VariantProps<typeof dropdownItemStyles> {}
+  extends MenuItemPrimitiveProps, VariantProps<typeof dropdownItemStyles> {
+  intent?: "danger" | "warning";
+}
 
 const MenuItem = ({ className, intent, children, ...props }: MenuItemProps) => {
   const textValue =
@@ -173,7 +170,7 @@ const MenuItem = ({ className, intent, children, ...props }: MenuItemProps) => {
   );
 };
 
-export interface MenuHeaderProps extends React.ComponentProps<typeof Header> {
+interface MenuHeaderProps extends React.ComponentProps<typeof Header> {
   separator?: boolean;
 }
 

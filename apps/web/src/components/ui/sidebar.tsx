@@ -30,7 +30,7 @@ import {
 import { twJoin, twMerge } from "tailwind-merge";
 import { SheetContent } from "@/components/ui/sheet";
 import useMediaQuery from "@/hooks/use-media-query";
-import { cx } from "@/lib/primitive";
+import { cx, filterUndefinedProps } from "@/lib/primitive";
 import { Button } from "./button";
 import { Link } from "./link";
 import { Tooltip, TooltipContent } from "./tooltip";
@@ -386,8 +386,10 @@ const SidebarSection = ({ className, ...props }: SidebarSectionProps) => {
   );
 };
 
-interface SidebarItemProps
-  extends Omit<React.ComponentProps<typeof Link>, "children"> {
+interface SidebarItemProps extends Omit<
+  React.ComponentProps<typeof Link>,
+  "children"
+> {
   isCurrent?: boolean;
   children?:
     | React.ReactNode
@@ -416,7 +418,7 @@ const SidebarItem = ({
     <Link
       ref={ref}
       data-slot="sidebar-item"
-      aria-current={isCurrent ? "page" : undefined}
+      {...(isCurrent ? { "aria-current": "page" } : {})}
       className={composeRenderProps(
         className,
         (className, { isPressed, isFocusVisible, isHovered, isDisabled }) =>
@@ -442,7 +444,7 @@ const SidebarItem = ({
             className,
           ]),
       )}
-      {...props}
+      {...filterUndefinedProps(props)}
     >
       {(values) => (
         <>

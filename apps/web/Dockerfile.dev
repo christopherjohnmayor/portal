@@ -1,0 +1,24 @@
+# Development Dockerfile for Portal
+# Use Debian-based image for better compatibility with native binaries (glibc vs musl)
+FROM oven/bun:1.2
+
+WORKDIR /app
+
+# Install Node.js 22 (LTS) for Next.js requirement (>=20.9.0)
+RUN apt-get update && apt-get install -y curl gnupg && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs
+
+# Install dependencies first for better caching
+COPY package.json bun.lock ./
+# Remove lockfile validation to allow platform specific updates
+RUN bun install --no-save
+
+# Copy source code
+COPY . .
+
+# Expose port
+EXPOSE 3000
+
+# Development command - run only the web app
+CMD ["/bin/sh", "-c", "cd apps/web && bun run dev"]

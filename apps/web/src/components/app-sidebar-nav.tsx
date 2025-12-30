@@ -3,14 +3,26 @@ import { useState } from "react";
 import ArrowDownCircleIcon from "@/components/icons/arrow-down-circle-icon";
 import ArrowUpCircleIcon from "@/components/icons/arrow-up-circle-icon";
 import IconGitPullRequest from "@/components/icons/git-pull-request-icon";
+import {
+  ServerIcon,
+  TrashIcon,
+  PlusIcon,
+} from "@/components/icons/server-icon";
 import { Breadcrumbs, BreadcrumbsItem } from "@/components/ui/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { SidebarNav, SidebarTrigger } from "@/components/ui/sidebar";
+import { ListBox, ListBoxItem } from "@/components/ui/list-box";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
 import useLocalStorage from "@/hooks/use-local-storage";
 import { useCurrentProject } from "@/hooks/use-project";
 import { useSelectedModel } from "@/hooks/use-selected-model";
 import { mutateSessionMessages } from "@/hooks/use-session-messages";
 import { mutateSessions, useSession } from "@/hooks/use-sessions";
+import { useServers } from "@/hooks/use-servers";
 import { PR_PREFIX_KEY } from "@/lib/constants";
 
 const getCreatePRPrompt = (branchPrefix: string) => {
@@ -79,8 +91,11 @@ export default function AppSidebarNav() {
     : undefined;
   const { session } = useSession(sessionId);
 
-  // Derive project name from worktree path
-  const projectName = project?.worktree?.split("/").pop() || "Dashboard";
+  const { servers, activeServer, setActiveServer } = useServers();
+
+  // Use active server name as project name, or derive from worktree
+  const projectName =
+    activeServer?.name || project?.worktree?.split("/").pop() || "Dashboard";
 
   const sessionName =
     session?.title || (session ? `Session ${session.id}` : null);
@@ -95,6 +110,9 @@ export default function AppSidebarNav() {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(activeServer?.url
+          ? { "X-Active-Server-Url": activeServer.url }
+          : {}),
       },
       body: JSON.stringify({
         text: prompt,
@@ -158,6 +176,39 @@ export default function AppSidebarNav() {
         </Breadcrumbs>
       </span>
       <span className="flex items-center gap-x-2 ml-auto font-[family-name:var(--font-geist-mono)]">
+        {/* Server Switcher */}
+        <Popover>
+          <PopoverTrigger>
+            <Button size="xs" intent="outline" className="gap-2">
+              <ServerIcon size={14} />
+              {activeServer?.name || "Select Server"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="min-w-[200px]">
+            <div className="py-1">
+              {servers.map((server) => (
+                <button
+                  key={server.id}
+                  onClick={() => setActiveServer(server.id)}
+                  className={`w-full px-3 py-2 text-left flex items-center gap-2 rounded-lg hover:bg-muted/50 transition-colors ${
+                    activeServer?.id === server.id ? "bg-primary/10" : ""
+                  }`}
+                >
+                  {server.color && (
+                    <span
+                      className="size-2.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: server.color }}
+                    />
+                  )}
+                  <span className="flex-1 truncate">{server.name}</span>
+                  {activeServer?.id === server.id && (
+                    <span className="text-xs text-primary ml-2">(active)</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
         <Button
           size="xs"
           intent="outline"

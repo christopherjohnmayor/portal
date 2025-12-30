@@ -1,16 +1,82 @@
 services:
+  # OpenCode server with plugins
+  opencode:
+    image: ghcr.io/sst/opencode:latest
+    container_name: opencode-server
+    restart: unless-stopped
+    ports:
+      - "4001:4000"
+    volumes:
+      # Mount your project directory
+      - ${PROJECT_PATH:-./workspace}:/workspace
+      # Git configuration (optional)
+      - ~/.gitconfig:/root/.gitconfig:ro
+      - ~/.ssh:/root/.ssh:ro
+      # Mount user repositories
+      - /Volumes/2TB/repositories:/Volumes/2TB/repositories
+      # Persist OpenCode config locally in project (sibling to web app)
+      - ../opencode:/root/.config/opencode
+      # Docker socket for opencode-pty plugin
+      - /var/run/docker.sock:/var/run/docker.sock
+    working_dir: /workspace
+    environment:
+      - WORKSPACE_FOLDERS=${WORKSPACE_FOLDERS}
+      - LD_PRELOAD=/lib/libgcompat.so.0
+    # Override entrypoint to run shell script before opencode
+    entrypoint: /bin/sh
+    command: 
+      - -c
+      - |
+        # Install gcompat for glibc compatibility (required for opencode CLI/bun-pty)
+        apk add --no-cache gcompat
+
+        # Create mock xdg-open to handle headless browser auth
+        echo '#!/bin/sh' > /usr/local/bin/xdg-open
+        echo 'echo "🔗 [Browser] Opening URL: $$1"' >> /usr/local/bin/xdg-open
+        chmod +x /usr/local/bin/xdg-open
+
+        if [ -n "$$WORKSPACE_FOLDERS" ]; then
+          echo "🔗 Linking workspace folders: $$WORKSPACE_FOLDERS";
+          for folder in $$(echo "$$WORKSPACE_FOLDERS" | tr ',' ' '); do
+             if [ -d "/Volumes/2TB/repositories/$$folder" ]; then
+                echo "   -> Linking $$folder";
+                ln -sf "/Volumes/2TB/repositories/$$folder" "/workspace/$$folder";
+             else
+                echo "   ⚠️  Warning: Repository $$folder not found in /Volumes/2TB/repositories";
+             fi
+          done
+        fi;
+        exec opencode serve --port 4000 --hostname 0.0.0.0
+
+  # Portal web UI - development mode with source mounting
   portal:
-    image: ghcr.io/hosenur/portal:latest
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile.dev
+    container_name: opencode-portal
     ports:
       - "3000:3000"
     environment:
-      - OPENCODE_SERVER_URL=http://localhost:4000
-      # Set to the container name/ID you want to connect to
-      # If not set, it will use the portal container's own terminal
-      - OPENCODE_CONTAINER=${OPENCODE_CONTAINER:-}
-      # Docker host configuration (defaults to unix socket inside container)
+      # Connect to the OpenCode container
+      - OPENCODE_SERVER_URL=http://opencode:4000
+      # Docker socket for terminal access
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - OPENCODE_CONTAINER=opencode-server
     volumes:
-      # Mount Docker socket to allow terminal access to containers
+      # Mount source for hot reload
+      - ../..:/app
+      # Keep node_modules in container
+      - portal-node-modules:/app/node_modules
+      # Mount Docker socket for container terminal access
       - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - opencode
     restart: unless-stopped
+
+networks:
+  default:
+    name: opencode-network
+
+volumes:
+  portal-node-modules:
+    name: portal-node-modules

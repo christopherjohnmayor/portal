@@ -1,43 +1,46 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Elysia } from "elysia";
 import { createOpencodeClient } from "@opencode-ai/sdk";
+import { createClientWithActiveServer } from "@/lib/server-url";
 
-if (!process.env.OPENCODE_SERVER_URL) {
-  throw new Error("OPENCODE_SERVER_URL environment variable is required");
-}
-
-const opencodeClient = createOpencodeClient({
-  baseUrl: process.env.OPENCODE_SERVER_URL,
-});
+// Create OpenCode client factory that uses active server from request header
+const getOpenCodeClient = (req: NextApiRequest) => {
+  return createClientWithActiveServer(req);
+};
 
 const app = new Elysia({ prefix: "/api" })
   .get("/", () => ({ message: "Hello from Elysia!" }))
-  .get("/sessions", async () => {
-    const sessions = await opencodeClient.session.list();
+  .get("/sessions", async ({ request }) => {
+    const client = getOpenCodeClient(request as any);
+    const sessions = await client.session.list();
     return sessions;
   })
-  .post("/sessions", async () => {
-    const session = await opencodeClient.session.create({});
+  .post("/sessions", async ({ request }) => {
+    const client = getOpenCodeClient(request as any);
+    const session = await client.session.create({});
     return session;
   })
-  .get("/sessions/:id", async ({ params }) => {
-    const session = await opencodeClient.session.get({
+  .get("/sessions/:id", async ({ params, request }) => {
+    const client = getOpenCodeClient(request as any);
+    const session = await client.session.get({
       path: { id: params.id },
     });
     return session;
   })
-  .get("/sessions/:id/messages", async ({ params }) => {
-    const messages = await opencodeClient.session.messages({
+  .get("/sessions/:id/messages", async ({ params, request }) => {
+    const client = getOpenCodeClient(request as any);
+    const messages = await client.session.messages({
       path: { id: params.id },
     });
     return messages;
   })
-  .post("/sessions/:id/prompt", async ({ params, body }) => {
+  .post("/sessions/:id/prompt", async ({ params, body, request }) => {
+    const client = getOpenCodeClient(request as any);
     const { text, model } = body as {
       text: string;
       model?: { providerID: string; modelID: string };
     };
-    const response = await opencodeClient.session.prompt({
+    const response = await client.session.prompt({
       path: { id: params.id },
       body: {
         ...(model && { model }),
@@ -46,26 +49,35 @@ const app = new Elysia({ prefix: "/api" })
     });
     return response;
   })
-  .get("/models", async () => {
-    const config = await opencodeClient.config.providers();
+  .get("/models", async ({ request }) => {
+    const client = getOpenCodeClient(request as any);
+    const config = await client.config.providers();
     return config;
   })
-  .get("/project/current", async () => {
-    const project = await opencodeClient.project.current();
+  .get("/project/current", async ({ request }) => {
+    const client = getOpenCodeClient(request as any);
+    const project = await client.project.current();
     return project;
   })
-  .get("/files/search", async ({ query }) => {
+  .get("/files/search", async ({ query, request }) => {
+    const client = getOpenCodeClient(request as any);
     const { q } = query as { q?: string };
     if (!q) {
       return [];
     }
-    const files = await opencodeClient.find.files({
+    const files = await client.find.files({
       query: { query: q },
     });
     return files;
   })
-  .delete("/sessions/:id", async ({ params }) => {
-    await opencodeClient.session.delete({
+  .get("/config", async ({ request }) => {
+    const client = getOpenCodeClient(request as any);
+    const config = await client.config.get();
+    return config;
+  })
+  .delete("/sessions/:id", async ({ params, request }) => {
+    const client = getOpenCodeClient(request as any);
+    await client.session.delete({
       path: { id: params.id },
     });
     return { success: true };

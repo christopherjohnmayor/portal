@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSelectedModel } from "@/hooks/use-selected-model";
 import { mutateSessions, useSession } from "@/hooks/use-sessions";
+import { useServers } from "@/hooks/use-servers";
 import { aggregateSessionUsage } from "@/hooks/use-session-usage";
 import {
   useSessionMessages,
@@ -284,6 +285,7 @@ export default function SessionPage() {
 
   const fileMention = useFileMention();
   const { selectedModel } = useSelectedModel();
+  const { activeServer } = useServers();
 
   // Combined error from messages fetch or send
   const error = messagesError?.message || sendError;
@@ -362,6 +364,9 @@ export default function SessionPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...(activeServer?.url
+              ? { "X-Active-Server-Url": activeServer.url }
+              : {}),
           },
           body: JSON.stringify({
             text: messageText,
@@ -388,7 +393,7 @@ export default function SessionPage() {
         removeOptimisticMessage(sessionId, messageId);
       }
     },
-    [sessionId, selectedModel],
+    [sessionId, selectedModel, activeServer],
   );
 
   // Process the message queue one by one
